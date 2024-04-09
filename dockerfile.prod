@@ -1,0 +1,41 @@
+# Install dependencies only when needed
+FROM node:21-alpine3.19 AS deps
+WORKDIR /usr/src/app
+
+COPY package.json yarn.lock ./
+
+RUN yarn install
+
+# Builder
+FROM node:21-alpine3.19 AS build
+WORKDIR /usr/src/app
+
+# Copiar deps, contiene los modulos de node
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+# Copiar todo el codigo fuente
+COPY . .
+
+# RUN yarn test
+RUN yarn build
+
+# Limpieza de modulos que no se usaran y dejar solo los necesarios
+RUN yarn add ci -f --only=production && yarn cache clean --force
+RUN npx prisma generate
+
+# Build image end
+FROM node:21-alpine3.19 AS prod
+WORKDIR /usr/src/app
+
+# Copiar desp de build, contiene los modulos de node
+COPY --from=build /usr/src/app/node_modules ./node_modules
+
+# Copiar la carpeta DIST
+COPY --from=build /usr/src/app/dist ./dist
+
+ENV NODE_ENV=production
+
+USER node
+
+EXPOSE 3004
+
+CMD [ "node","dist/main.js" ]
